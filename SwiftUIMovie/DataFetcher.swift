@@ -13,6 +13,14 @@ struct DataFetcher {
     let youtubeSearchURL = APIConfig.shared?.youtubeSearchURL
     let youtubeAPIKey = APIConfig.shared?.youtubeAPIKey
     
+    // Custom URLSession with proper SSL configuration to fix SSL errors
+    private let urlSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 60
+        return URLSession(configuration: configuration)
+    }()
+    
     func fetchTitles(for media: String, by type: String) async throws -> [Title] {
         let fetchTitlesURL = try buildURL(media: media, type: type)
         
@@ -27,39 +35,51 @@ struct DataFetcher {
     }
     
     func fetchVideoId(for title: String) async throws -> String {
-        guard let baseSearchURL = youtubeSearchURL else {
-            throw NetworkError.missingConfig
+            guard let baseSearchURL = youtubeSearchURL else {
+                throw NetworkError.missingConfig
+            }
+            
+            guard let searchAPIKey = youtubeAPIKey else {
+                throw NetworkError.missingConfig
+            }
+            
+            let trailerSearch = title + YoutubeURLStrings.space.rawValue + YoutubeURLStrings.trailer.rawValue
+            
+            guard let fetchVideoURL = URL(string: baseSearchURL)?.appending(queryItems: [
+                URLQueryItem(name: YoutubeURLStrings.queryShorten.rawValue, value: trailerSearch),
+                URLQueryItem(name: YoutubeURLStrings.key.rawValue, value: searchAPIKey),
+                
+                // NEW: Only find videos; ignore channels/playlists
+                URLQueryItem(name: "type", value: "video"),
+                
+                // NEW: CRITICAL FIX. Only return videos that allow embedding!
+                URLQueryItem(name: "videoEmbeddable", value: "true")
+                
+            ]) else {
+                throw NetworkError.urlBuildFailed
+            }
+            
+            print(fetchVideoURL)
+            
+            return try await fetchAndDecode(url: fetchVideoURL, type: YoutubeSearchResponse.self).items?.first?.id?.videoId ?? ""
+            
         }
-        
-        guard let searchAPIKey = youtubeAPIKey else {
-            throw NetworkError.missingConfig
-        }
-        
-        let trailerSearch = title + YoutubeURLStrings.space.rawValue + YoutubeURLStrings.trailer.rawValue
-        
-        guard let fetchVideoURL = URL(string: baseSearchURL)?.appending(queryItems: [
-            URLQueryItem(name: YoutubeURLStrings.queryShorten.rawValue, value: trailerSearch),
-            URLQueryItem(name: YoutubeURLStrings.key.rawValue, value: searchAPIKey)
-        ]) else {
-            throw NetworkError.urlBuildFailed
-        }
-        
-        print(fetchVideoURL)
-        
-        return try await fetchAndDecode(url: fetchVideoURL, type: YoutubeSearchResponse.self).items?.first?.id?.videoId ?? ""
-        
-    }
     
     func fetchAndDecode<T: Decodable>(url: URL, type: T.Type) async throws -> T {
-        let(data, urlResponse) = try await URLSession.shared.data(from: url)
+        let (data, urlResponse) = try await self.urlSession.data(from: url)
         
         guard let response = urlResponse as? HTTPURLResponse, response.statusCode == 200 else {
+            // Print the error status to the console so you can see it
+            let code = (urlResponse as? HTTPURLResponse)?.statusCode ?? -1
+            print("❌ Network Error: Status Code \(code) for URL: \(url)")
+            
             throw NetworkError.badURLResponse(underlyingError: NSError(
                 domain: "DataFetcher",
-                code: (urlResponse as? HTTPURLResponse)?.statusCode ?? -1,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid HTTP Response"])
-            )
+                code: code,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid HTTP Response: \(code)"]
+            ))
         }
+        
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(type, from: data)
