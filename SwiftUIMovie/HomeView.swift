@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct HomeView: View {
-    
-    var viewModel = ViewModel()
+
+    @State private var viewModel = ViewModel()
     @State private var titleDetailPath = NavigationPath()
     
     var body: some View {

@@ -24,7 +24,7 @@ struct VerticalListView: View {
                             .padding(5)
                         
                         Text((title.name ?? title.title) ?? "")
-                            .font(.system(size: 14))
+                            .font(.headline)
                             .bold()
                     }
                 } placeholder: {

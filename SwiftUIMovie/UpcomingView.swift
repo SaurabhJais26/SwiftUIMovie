@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct UpcomingView: View {
-    let viewModel = ViewModel()
+    @State private var viewModel = ViewModel()
     
     var body: some View {
         NavigationStack {

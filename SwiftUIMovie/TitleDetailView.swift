@@ -12,7 +12,7 @@ struct TitleDetailView: View {
     var titleName: String {
         return (title.name ?? title.title) ?? ""
     }
-    let viewModel = ViewModel()
+    @State private var viewModel = ViewModel()
     
     var body: some View {
         GeometryReader { geometry in
